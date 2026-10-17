@@ -15,6 +15,7 @@ from lightrag.llm.openai import openai_complete_if_cache, openai_embed
 from lightrag.utils import EmbeddingFunc
 
 from .config import RAGConfig
+from paper2slides.llm import create_llm_client
 
 
 class RAGClient:
@@ -53,17 +54,44 @@ class RAGClient:
         """Wrap an existing LightRAG instance."""
         return cls(config=config, lightrag_instance=lightrag_instance)
     
-    def _get_api_kwargs(self) -> Dict[str, Any]:
-        """Get API kwargs, only including base_url if it's set."""
+    def _get_llm_api_kwargs(self) -> Dict[str, Any]:
+        """Get text-LLM API kwargs, only including base_url if it is set."""
         api = self.config.api
         kwargs = {"api_key": api.llm_api_key}
         if api.llm_base_url:
             kwargs["base_url"] = api.llm_base_url
         return kwargs
+
+    def _get_embedding_api_kwargs(self) -> Dict[str, Any]:
+        """Get embedding-provider API kwargs, separately from text generation."""
+        api = self.config.api
+        kwargs = {"api_key": api.embedding_api_key or ""}
+        if api.embedding_base_url:
+            kwargs["base_url"] = api.embedding_base_url
+        return kwargs
     
     def _create_llm_func(self) -> Callable:
         api = self.config.api
-        api_kwargs = self._get_api_kwargs()
+        api_kwargs = self._get_llm_api_kwargs()
+
+        if api.llm_api_style == "responses":
+            client = create_llm_client()
+
+            async def responses_func(prompt: str, system_prompt: Optional[str] = None,
+                                     history_messages: List = None, **kwargs):
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.extend(history_messages or [])
+                messages.append({"role": "user", "content": prompt})
+                return await asyncio.to_thread(
+                    client.complete_text,
+                    messages,
+                    model=api.llm_model,
+                    **kwargs,
+                )
+
+            return responses_func
         
         def func(prompt: str, system_prompt: Optional[str] = None,
                  history_messages: List = None, **kwargs):
@@ -78,8 +106,36 @@ class RAGClient:
     
     def _create_vision_func(self) -> Callable:
         api = self.config.api
-        api_kwargs = self._get_api_kwargs()
+        api_kwargs = self._get_llm_api_kwargs()
         llm_func = self._create_llm_func()
+
+        if api.llm_api_style == "responses":
+            client = create_llm_client()
+
+            async def responses_vision_func(prompt: str, system_prompt: Optional[str] = None,
+                                            history_messages: List = None, image_data: Optional[str] = None,
+                                            messages: Optional[List] = None, **kwargs):
+                request_messages = messages or []
+                if not request_messages:
+                    request_messages = []
+                    if system_prompt:
+                        request_messages.append({"role": "system", "content": system_prompt})
+                    request_messages.extend(history_messages or [])
+                    content = [{"type": "text", "text": prompt}]
+                    if image_data:
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
+                        })
+                    request_messages.append({"role": "user", "content": content})
+                return await asyncio.to_thread(
+                    client.complete_text,
+                    request_messages,
+                    model=api.llm_model,
+                    **kwargs,
+                )
+
+            return responses_vision_func
         
         def func(prompt: str, system_prompt: Optional[str] = None,
                  history_messages: List = None, image_data: Optional[str] = None,
@@ -115,7 +171,13 @@ class RAGClient:
     
     def _create_embedding_func(self) -> EmbeddingFunc:
         api = self.config.api
-        api_kwargs = self._get_api_kwargs()
+        if not api.embedding_api_key:
+            raise ValueError(
+                "Normal RAG mode requires an embedding provider. Set "
+                "RAG_EMBEDDING_API_KEY and optionally RAG_EMBEDDING_BASE_URL, "
+                "or use --fast with a text/vision provider."
+            )
+        api_kwargs = self._get_embedding_api_kwargs()
         # openai_embed is already wrapped by @wrap_embedding_func_with_attrs as an EmbeddingFunc
         # with default embedding_dim=1536. Use openai_embed.func to get the raw async function
         # and avoid double-wrapping which causes vector count mismatch validation errors.

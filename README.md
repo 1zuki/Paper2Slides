@@ -136,6 +136,19 @@ pip install -r requirements.txt
 > [!NOTE]
 > Create a `.env` file in `paper2slides/` directory with your API keys. Refer to `paper2slides/.env.example` for the required variables.
 
+#### External text providers
+
+The text provider is selected with `RAG_LLM_PROVIDER`. The default `openai_compatible` keeps using Chat Completions. For an external gateway that exposes the Responses API, configure:
+
+```dotenv
+RAG_LLM_PROVIDER="codex_gateway"
+CODEX_API_KEY="..."
+CODEX_BASE_URL="https://your-gateway.example/backend-api/codex"
+CODEX_MODEL="your-text-model"
+```
+
+The adapter appends `/v1` when needed and sends text and vision requests to the gateway's streaming `/v1/responses` route. Fast mode does not require embeddings. Normal RAG mode also needs an embedding endpoint, configured separately with `RAG_EMBEDDING_API_KEY` and `RAG_EMBEDDING_BASE_URL`. Image generation remains a separate provider selected with `IMAGE_GEN_PROVIDER`. Keep credentials in `paper2slides/.env` or process environment variables, never in source code.
+
 ### 2. Command Line Usage
 
 ```bash

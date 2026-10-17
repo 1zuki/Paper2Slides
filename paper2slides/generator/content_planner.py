@@ -8,6 +8,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
 from openai import OpenAI
+from paper2slides.llm import LLMClient, create_llm_client
 
 from .config import GenerationInput, OutputType
 from ..summary import FigureInfo, TableInfo
@@ -117,6 +118,7 @@ class ContentPlanner:
         base_url: str = None,
         model: str = "gpt-4o",
         max_tokens: int = None,
+        llm_client: LLMClient = None,
     ):
         import os
         self.api_key = api_key or os.getenv("RAG_LLM_API_KEY", "")
@@ -126,10 +128,16 @@ class ContentPlanner:
         # Note: deepseek has 8192 limit, set RAG_LLM_MAX_TOKENS=8192 if using deepseek
         self.max_tokens = max_tokens or int(os.getenv("RAG_LLM_MAX_TOKENS", "16000"))
         
-        kwargs = {"api_key": self.api_key}
-        if self.base_url:
-            kwargs["base_url"] = self.base_url
-        self.client = OpenAI(**kwargs)
+        if llm_client is not None:
+            self.client = llm_client
+        elif api_key is None and base_url is None:
+            self.client = create_llm_client()
+            self.model = self.client.settings.model
+        else:
+            kwargs = {"api_key": self.api_key}
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            self.client = OpenAI(**kwargs)
     
     def plan(self, gen_input: GenerationInput) -> ContentPlan:
         """Create a content plan from generation input."""

@@ -49,18 +49,32 @@ ENV_FILE="paper2slides/.env"
 if [ -f "$ENV_FILE" ]; then
     echo -e "${GREEN}✓${NC} Found at $ENV_FILE"
     
-    # Check 4: API Key
-    echo -n "Checking RAG_LLM_API_KEY... "
+    # Check 4: LLM provider credentials. Never print key material.
     source "$ENV_FILE"
-    if [ -z "$RAG_LLM_API_KEY" ]; then
-        echo -e "${RED}✗${NC} Not set in .env file"
-        ERRORS=$((ERRORS + 1))
-    elif [ "$RAG_LLM_API_KEY" = "your-api-key-here" ]; then
-        echo -e "${RED}✗${NC} Still using placeholder value"
-        ERRORS=$((ERRORS + 1))
-    else
-        echo -e "${GREEN}✓${NC} Configured (${RAG_LLM_API_KEY:0:8}...)"
-    fi
+    LLM_PROVIDER="${RAG_LLM_PROVIDER:-openai_compatible}"
+    echo -n "Checking LLM provider ($LLM_PROVIDER)... "
+    case "$LLM_PROVIDER" in
+        openai_compatible)
+            if [ -z "$RAG_LLM_API_KEY" ]; then
+                echo -e "${RED}✗${NC} RAG_LLM_API_KEY is not set"
+                ERRORS=$((ERRORS + 1))
+            else
+                echo -e "${GREEN}✓${NC} Text provider configured"
+            fi
+            ;;
+        codex_gateway)
+            if [ -z "$CODEX_API_KEY" ] || [ -z "$CODEX_BASE_URL" ] || [ -z "$CODEX_MODEL" ]; then
+                echo -e "${RED}✗${NC} CODEX_API_KEY, CODEX_BASE_URL, and CODEX_MODEL are required"
+                ERRORS=$((ERRORS + 1))
+            else
+                echo -e "${GREEN}✓${NC} External Responses provider configured"
+            fi
+            ;;
+        *)
+            echo -e "${RED}✗${NC} Unsupported provider"
+            ERRORS=$((ERRORS + 1))
+            ;;
+    esac
 else
     echo -e "${RED}✗${NC} Not found"
     echo "   Please copy env.example to paper2slides/.env"
@@ -135,4 +149,3 @@ else
     echo "Please fix the errors above before starting the server."
     exit 1
 fi
-

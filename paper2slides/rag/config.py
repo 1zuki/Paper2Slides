@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List
 from dotenv import load_dotenv
+from paper2slides.llm import get_llm_settings
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -27,18 +28,21 @@ class APIConfig:
     """
     
     llm_api_key: str = field(
-        default_factory=lambda: os.getenv("RAG_LLM_API_KEY", "")
+        default_factory=lambda: get_llm_settings().api_key
     )
     """Required. Set via RAG_LLM_API_KEY env var or pass explicitly."""
     
     llm_base_url: Optional[str] = field(
-        default_factory=lambda: os.getenv("RAG_LLM_BASE_URL", None)
+        default_factory=lambda: get_llm_settings().base_url
     )
     """Optional. If None, uses OpenAI official API. Set via RAG_LLM_BASE_URL env var."""
     
     llm_model: str = field(
-        default_factory=lambda: os.getenv("LLM_MODEL", "gpt-4o-mini")
+        default_factory=lambda: get_llm_settings().model
     )
+
+    llm_provider: str = field(default_factory=lambda: get_llm_settings().provider)
+    llm_api_style: str = field(default_factory=lambda: get_llm_settings().api_style)
     
     embedding_model: str = field(
         default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-large")
@@ -47,13 +51,19 @@ class APIConfig:
         default_factory=lambda: int(os.getenv("EMBEDDING_DIM", "3072"))
     )
     embedding_max_tokens: int = 8192
+
+    embedding_api_key: Optional[str] = field(
+        default_factory=lambda: os.getenv("RAG_EMBEDDING_API_KEY")
+        or (os.getenv("RAG_LLM_API_KEY") if os.getenv("RAG_LLM_PROVIDER", "openai_compatible") == "openai_compatible" else None)
+    )
+    embedding_base_url: Optional[str] = field(
+        default_factory=lambda: os.getenv("RAG_EMBEDDING_BASE_URL")
+        or (os.getenv("RAG_LLM_BASE_URL") if os.getenv("RAG_LLM_PROVIDER", "openai_compatible") == "openai_compatible" else None)
+    )
     
     def __post_init__(self):
         if not self.llm_api_key:
-            raise ValueError(
-                "API key is required. Set RAG_LLM_API_KEY environment variable "
-                "or pass llm_api_key explicitly."
-            )
+            raise ValueError("An LLM API key is required for the selected provider.")
 
 
 @dataclass

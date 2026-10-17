@@ -171,7 +171,7 @@ def generate_general_queries(
         overview: Document overview text
         count: Number of queries to generate
     """
-    from openai import OpenAI
+    from paper2slides.llm import create_llm_client
     
     prompt = _GENERATE_GENERAL_QUERIES_PROMPT.format(
         overview=_truncate_overview(overview),
@@ -181,10 +181,7 @@ def generate_general_queries(
     try:
         config = rag_client.config.api
         
-        client = OpenAI(
-            api_key=config.llm_api_key,
-            base_url=config.llm_base_url,
-        )
+        client = create_llm_client()
         
         response = client.chat.completions.create(
             model=config.llm_model,

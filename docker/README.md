@@ -45,21 +45,21 @@ Create a `.env` file in the `paper2slides/` directory based on the example:
 copy paper2slides\.env.example paper2slides\.env
 ```
 
-Edit `paper2slides/.env` and add your API keys:
+Edit `paper2slides/.env` and configure the provider and keys you use. For the default OpenAI-compatible API:
 
 ```env
-# OpenAI API Key (optional)
-OPENAI_API_KEY=your_openai_api_key_here
-
-# DeepSeek API Key (optional)
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
-
-# Gemini API Key (for image generation)
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Other settings
-# ...
+RAG_LLM_PROVIDER="openai_compatible"
+RAG_LLM_API_STYLE="chat_completions"
+RAG_LLM_API_KEY="..."
+RAG_LLM_BASE_URL=""
+LLM_MODEL="gpt-4o"
+IMAGE_GEN_PROVIDER="openrouter"
+IMAGE_GEN_API_KEY="..."
+IMAGE_GEN_BASE_URL="https://openrouter.ai/api/v1"
+IMAGE_GEN_MODEL="google/gemini-3-pro-image-preview"
 ```
+
+For an external Responses gateway, set `RAG_LLM_PROVIDER="codex_gateway"`, `CODEX_API_KEY`, `CODEX_BASE_URL`, and `CODEX_MODEL` instead of the OpenAI-compatible text settings. Normal RAG indexing also requires a separate embedding endpoint; fast mode does not.
 
 ### 4. Run with Docker Compose
 
