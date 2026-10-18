@@ -186,3 +186,58 @@ Open <http://localhost:5173>. Check services with:
 ## Current source-backed preview
 
 Because the API-backed Paper2Slides run was blocked by the credential and image-provider issues above, the workspace also contains a rendered source-backed academic preview built from the current manuscript and its original figures. It includes a montage and individual slide PNGs for reviewing the narrative and visual direction. It is not a completed Paper2Slides PPTX/PDF and does not claim that the API pipeline completed.
+
+## Research-profile deck
+
+Use the research profile when the goal is a technical seminar, lab meeting, or reusable research record rather than a short overview:
+
+```bash
+cd /home/izu/Projects/Paper2Slides
+source .venv/bin/activate
+export PATH="$PWD/.venv/bin:$PATH"
+
+python -m paper2slides \
+  --input /home/izu/Projects/tsunami-surrogate/paper/build/main.pdf \
+  --output slides \
+  --content paper \
+  --style academic \
+  --profile research \
+  --min-slides 24 \
+  --max-slides 36 \
+  --include-appendix \
+  --parallel 2 \
+  --output-dir outputs-tsu
+```
+
+The research profile has separate checkpoints, so it does not reuse the standard summary. With `--include-appendix`, the RAG and summary checkpoints also receive an `_appendix` suffix. Inspect the plan before spending image-generation time:
+
+```bash
+python - <<'PY'
+import json
+from pathlib import Path
+
+plan = Path("outputs-tsu/main/paper/normal/slides_academic_long_research_24-36_appendix/checkpoint_plan.json")
+data = json.loads(plan.read_text())
+meta = data["plan"].get("metadata", {})
+print("requested:", meta.get("requested_slide_range"))
+print("actual:", meta.get("actual_slide_count"))
+for i, slide in enumerate(data["plan"].get("sections", []), 1):
+    print(f"{i:02d}. {slide['title']}")
+PY
+```
+
+If only the plan needs revision, keep the research RAG/summary checkpoints and rerun from `plan`:
+
+```bash
+python -m paper2slides \
+  --input /home/izu/Projects/tsunami-surrogate/paper/build/main.pdf \
+  --output slides \
+  --content paper \
+  --style academic \
+  --profile research \
+  --min-slides 24 \
+  --max-slides 36 \
+  --include-appendix \
+  --from-stage plan \
+  --output-dir outputs-tsu
+```

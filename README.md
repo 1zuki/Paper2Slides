@@ -175,6 +175,17 @@ CODEX_MODEL="gpt-6-luna"
 # Basic usage - generate slides from a paper
 python -m paper2slides --input paper.pdf --output slides --length medium
 
+# Detailed research-seminar deck
+python -m paper2slides \
+  --input paper.pdf \
+  --output slides \
+  --style academic \
+  --profile research \
+  --min-slides 24 \
+  --max-slides 36 \
+  --include-appendix \
+  --parallel 2
+
 # Generate poster with custom style
 python -m paper2slides --input paper.pdf --output poster --style "minimalist with blue theme" --density medium
 
@@ -197,6 +208,9 @@ python -m paper2slides --list
 | `--content` | Content type: `paper` or `general` | `paper` |
 | `--style` | Style: `academic`, `doraemon`, or custom | `doraemon` |
 | `--length` | Slides length: `short`, `medium`, `long` | `short` |
+| `--profile` | Planning profile: `standard` or `research` | `standard` |
+| `--min-slides` / `--max-slides` | Custom slide bounds, useful for research decks | profile default |
+| `--include-appendix` | Retrieve and plan appendix/supplementary evidence | disabled |
 | `--density` | Poster density: `sparse`, `medium`, `dense` | `medium` |
 | `--fast` | Fast mode: skip RAG indexing | `false` |
 | `--parallel` | Enable parallel slide generation: `--parallel` uses 2 workers, `--parallel N` uses N workers | `1` (sequential without this option) |
