@@ -34,7 +34,7 @@ from ..prompts.image_generation import (
     SLIDE_FIGURE_HINT,
     POSTER_FIGURE_HINT,
 )
-from .academic_compositor import render_academic_slide
+from .academic_compositor import render_academic_poster, render_academic_slide
 
 
 @dataclass
@@ -168,6 +168,19 @@ class ImageGenerator:
         all_sections_md = self._format_sections_markdown(plan)
         all_images = self._filter_images(plan.sections, figure_images)
         
+        if (
+            plan.output_type == "poster"
+            and style_name == "academic"
+            and self.compose_academic
+        ):
+            result = self._generate_academic_poster(
+                plan,
+                figure_images,
+                gen_input.config.poster_density.value,
+            )
+            if save_callback and result:
+                save_callback(result[0], 0, 1)
+            return result
         if plan.output_type == "poster":
             result = self._generate_poster(style_name, processed_style, all_sections_md, all_images)
             if save_callback and result:
@@ -193,6 +206,16 @@ class ImageGenerator:
             if save_callback:
                 save_callback(generated, index, total)
         return results
+
+    def _generate_academic_poster(self, plan, figure_images, density: str) -> List[GeneratedImage]:
+        """Compose a readable academic poster from exact paper evidence.
+
+        Diffusion is intentionally bypassed here: it is useful for visual
+        concepts, but it cannot reliably render the poster's scientific text,
+        tables, or numerical labels.  The local compositor keeps those exact.
+        """
+        image_data = render_academic_poster(plan, figure_images, density=density)
+        return [GeneratedImage(section_id="poster", image_data=image_data, mime_type="image/png")]
     
     def _generate_poster(self, style_name, processed_style: Optional[ProcessedStyle], sections_md, images) -> List[GeneratedImage]:
         """Generate 1 poster image."""
