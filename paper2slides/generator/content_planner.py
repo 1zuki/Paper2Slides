@@ -138,7 +138,7 @@ class ContentPlanner:
         configured_context_chars = os.getenv("PLANNER_LLM_CONTEXT_CHARS", "")
         self.context_chars = int(configured_context_chars or "10000")
         self.context_chars_explicit = bool(configured_context_chars)
-        
+
         if llm_client is not None:
             self.client = llm_client
         elif api_key is None and base_url is None:
