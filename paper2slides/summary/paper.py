@@ -13,18 +13,41 @@ from ..rag import RAGQueryResult
 from ..prompts.paper_extraction import EXTRACT_PROMPTS
 
 
-SUMMARY_SECTIONS: List[str] = ["paper_info", "motivation", "solution", "results", "contributions"]
+SUMMARY_SECTIONS: List[str] = [
+    "paper_info",
+    "motivation",
+    "solution",
+    "data_generation",
+    "formulation",
+    "implementation",
+    "results",
+    "contributions",
+    "appendix",
+]
 
 # Sections that need LLM for structured extraction
-LLM_SECTIONS: Set[str] = {"motivation", "solution", "results", "contributions"}
+LLM_SECTIONS: Set[str] = {
+    "motivation",
+    "solution",
+    "data_generation",
+    "formulation",
+    "implementation",
+    "results",
+    "contributions",
+    "appendix",
+}
 
 # Section titles for the final summary
 SECTION_TITLES: Dict[str, str] = {
     "paper_info": "# Paper Information",
     "motivation": "# Motivation",
     "solution": "# Solution / Methodology",
+    "data_generation": "# Data Generation and Benchmark Construction",
+    "formulation": "# Mathematical / Numerical Formulation",
+    "implementation": "# Implementation and Reproducibility Details",
     "results": "# Results",
     "contributions": "# Contributions",
+    "appendix": "# Appendix and Supplementary Material",
 }
 
 # Supplementary sections to include with main sections
@@ -45,6 +68,10 @@ class RAGResults(TypedDict, total=False):
     figures: List[RAGQueryResult]
     tables: List[RAGQueryResult]
     equations: List[RAGQueryResult]
+    data_generation: List[RAGQueryResult]
+    formulation: List[RAGQueryResult]
+    implementation: List[RAGQueryResult]
+    appendix: List[RAGQueryResult]
     motivation: List[RAGQueryResult]
     solution: List[RAGQueryResult]
     results: List[RAGQueryResult]
@@ -58,10 +85,14 @@ class PaperContent:
     figures: str = ""
     tables: str = ""
     equations: str = ""
+    data_generation: str = ""
+    formulation: str = ""
+    implementation: str = ""
     motivation: str = ""
     solution: str = ""
     results: str = ""
     contributions: str = ""
+    appendix: str = ""
     # Raw data
     raw_rag_results: Dict[str, Any] = field(default_factory=dict)
     

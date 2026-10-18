@@ -14,9 +14,11 @@ from .config import GenerationInput, OutputType
 from ..summary import FigureInfo, TableInfo
 from ..prompts.content_planning import (
     PAPER_SLIDES_PLANNING_PROMPT,
+    RESEARCH_PAPER_SLIDES_PLANNING_PROMPT,
     PAPER_POSTER_PLANNING_PROMPT,
     PAPER_POSTER_DENSITY_GUIDELINES,
     GENERAL_SLIDES_PLANNING_PROMPT,
+    RESEARCH_GENERAL_SLIDES_PLANNING_PROMPT,
     GENERAL_POSTER_PLANNING_PROMPT,
     GENERAL_POSTER_DENSITY_GUIDELINES,
 )
@@ -44,6 +46,7 @@ class Section:
     title: str
     section_type: str  
     content: str
+    category: str = ""
     tables: List[TableRef] = field(default_factory=list)
     figures: List[FigureRef] = field(default_factory=list)
     
@@ -53,6 +56,7 @@ class Section:
             "title": self.title,
             "type": self.section_type,
             "content": self.content,
+            "category": self.category,
         }
         
         # Tables with optional extract/focus
@@ -131,6 +135,9 @@ class ContentPlanner:
             os.getenv("RAG_LLM_MAX_TOKENS", "16000"),
         )
         self.max_tokens = max_tokens or int(configured_max_tokens or "16000")
+        configured_context_chars = os.getenv("PLANNER_LLM_CONTEXT_CHARS", "")
+        self.context_chars = int(configured_context_chars or "10000")
+        self.context_chars_explicit = bool(configured_context_chars)
         
         if llm_client is not None:
             self.client = llm_client
@@ -183,17 +190,35 @@ class ContentPlanner:
         else:
             sections = self._plan_slides(gen_input, summary, tables_md, figure_images)
         
+        metadata = {
+            "density": gen_input.config.poster_density.value
+                      if gen_input.config.output_type == OutputType.POSTER else None,
+            "page_range": gen_input.config.get_page_range()
+                         if gen_input.config.output_type == OutputType.SLIDES else None,
+            "profile": gen_input.config.profile.value,
+            "include_appendix": gen_input.config.include_appendix,
+            "requested_slide_range": gen_input.config.get_page_range()
+                if gen_input.config.output_type == OutputType.SLIDES else None,
+            "actual_slide_count": len(sections),
+        }
+        if gen_input.config.output_type == OutputType.SLIDES:
+            minimum, maximum = gen_input.config.get_page_range()
+            counts = {}
+            for section in sections:
+                category = section.category or "uncategorized"
+                counts[category] = counts.get(category, 0) + 1
+            metadata["quality_checks"] = {
+                "slide_count_in_requested_range": minimum <= len(sections) <= maximum,
+                "category_counts": counts,
+                "uncategorized_slides": counts.get("uncategorized", 0),
+            }
+
         return ContentPlan(
             output_type=gen_input.config.output_type.value,
             sections=sections,
             tables_index=tables_index,
             figures_index=figures_index,
-            metadata={
-                "density": gen_input.config.poster_density.value 
-                          if gen_input.config.output_type == OutputType.POSTER else None,
-                "page_range": gen_input.config.get_page_range()
-                             if gen_input.config.output_type == OutputType.SLIDES else None,
-            },
+            metadata=metadata,
         )
     
     def _plan_slides(
@@ -207,7 +232,14 @@ class ContentPlanner:
         min_pages, max_pages = gen_input.config.get_page_range()
         
         # Select prompt template based on content type
-        template = PAPER_SLIDES_PLANNING_PROMPT if gen_input.is_paper() else GENERAL_SLIDES_PLANNING_PROMPT
+        if gen_input.config.profile.value == "research":
+            template = (
+                RESEARCH_PAPER_SLIDES_PLANNING_PROMPT
+                if gen_input.is_paper()
+                else RESEARCH_GENERAL_SLIDES_PLANNING_PROMPT
+            )
+        else:
+            template = PAPER_SLIDES_PLANNING_PROMPT if gen_input.is_paper() else GENERAL_SLIDES_PLANNING_PROMPT
         
         planning_figures = figure_images if self.attach_figures else []
         # Build assets section based on available tables/figures
@@ -220,8 +252,18 @@ class ContentPlanner:
         prompt = template.format(
             min_pages=min_pages,
             max_pages=max_pages,
-            summary=self._truncate(summary, 10000),
+            summary=self._truncate(
+                summary,
+                self.context_chars
+                if gen_input.config.profile.value != "research" or self.context_chars_explicit
+                else 30000,
+            ),
             assets_section=assets_section,
+            appendix_instruction=(
+                "include the appendix/supplementary evidence as clearly labeled slides"
+                if gen_input.config.include_appendix
+                else "omit appendix slides unless they are essential to understand the main method"
+            ),
         )
         
         result = self._call_multimodal_llm(prompt, planning_figures)
@@ -461,11 +503,15 @@ class ContentPlanner:
                     title=item.get("title", ""),
                     section_type=section_type,
                     content=item.get("content", ""),
+                    category=(
+                        item.get("category", "")
+                        or ("opening" if idx == 0 else "conclusion" if idx == total - 1 else "")
+                        or self._infer_category(item.get("title", ""), item.get("content", ""))
+                    ),
                     tables=tables,
                     figures=figures,
                 ))
             return sections
-            
         except json.JSONDecodeError as e:
             logger.error(f"JSON parsing failed: {e}")
             logger.error(f"Failed to parse JSON string (first 500 chars): {json_str[:500]}")
@@ -475,6 +521,26 @@ class ContentPlanner:
             logger.error(f"Unexpected error in _parse_sections: {e}")
             logger.warning("Using fallback sections due to unexpected error")
             return self._fallback_sections()
+
+    def _infer_category(self, title: str, content: str) -> str:
+        """Infer a coarse topic label when an older planner omits category."""
+        text = f"{title} {content}".lower()
+        labels = (
+            ("appendix", ("appendix", "supplement")),
+            ("formulation", ("equation", "formulation", "governing", "numerical")),
+            ("data", ("dataset", "data generation", "benchmark", "data collection")),
+            ("implementation", ("implementation", "reproduc", "training details", "hardware")),
+            ("evaluation", ("evaluation protocol", "metrics", "baseline", "validation")),
+            ("results", ("results", "ablation", "accuracy", "performance")),
+            ("limitations", ("limitation", "future work", "scope")),
+            ("method", ("method", "framework", "architecture", "pipeline", "approach")),
+            ("background", ("motivation", "background", "research problem", "research gap")),
+            ("conclusion", ("conclusion", "contributions", "takeaways")),
+        )
+        for category, keywords in labels:
+            if any(keyword in text for keyword in keywords):
+                return category
+        return ""
     
     def _fallback_sections(self) -> List[Section]:
         """Return minimal fallback sections if parsing fails."""

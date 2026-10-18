@@ -48,6 +48,14 @@ def main():
                         help="Style: academic, doraemon, or custom description")
     parser.add_argument("--length", choices=["short", "medium", "long"], default="short",
                         help="Slides length (default: short)")
+    parser.add_argument("--profile", choices=["standard", "research"], default="standard",
+                        help="Planning profile; research allocates more slides to technical detail")
+    parser.add_argument("--min-slides", type=int,
+                        help="Override the minimum slide count (use with --max-slides for custom decks)")
+    parser.add_argument("--max-slides", type=int,
+                        help="Override the maximum slide count")
+    parser.add_argument("--include-appendix", action="store_true",
+                        help="Include appendix/supplementary material when available")
     parser.add_argument("--density", choices=["sparse", "medium", "dense"], default="medium",
                         help="Poster density (default: medium)")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR,
@@ -97,6 +105,10 @@ def main():
         "style": style_type,
         "custom_style": custom_style,
         "slides_length": args.length,
+        "profile": args.profile,
+        "min_slides": args.min_slides,
+        "max_slides": args.max_slides,
+        "include_appendix": args.include_appendix,
         "poster_density": args.density,
         "fast_mode": args.fast,
         "max_workers": args.parallel if args.parallel else 1,

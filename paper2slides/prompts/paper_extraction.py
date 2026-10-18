@@ -71,6 +71,94 @@ Output format (use exact headers):
 ## KEY INNOVATIONS
 [What makes this approach novel or different from prior work]""",
 
+    "data_generation": """Organize the following data-generation and benchmark-construction evidence.
+Keep every exact count, resolution, source, split, sampling rule, preprocessing step, and quality-control detail. Do not invent missing values.
+
+Text:
+{content}
+
+Output format (use exact headers):
+## DATA SOURCES
+[Where the data comes from, including source families, simulations, measurements, or repositories]
+
+## GENERATION / COLLECTION PIPELINE
+[Step-by-step description of how examples, scenarios, fields, or trajectories are generated or collected]
+
+## PREPROCESSING AND QUALITY CONTROL
+[Normalization, filtering, alignment, deduplication, validity checks, and other processing]
+
+## SPLITS AND COVERAGE
+[Exact training/validation/test/held-out counts, resolutions, time windows, categories, and cross-reference design]
+
+## REPRODUCIBILITY VALUES
+[All parameters and exact numbers needed to reproduce the dataset or benchmark]""",
+
+    "formulation": """Extract the mathematical, physical, and numerical formulation from the text below.
+Preserve equations exactly where possible, define every symbol, and retain assumptions, boundary/initial conditions, discretization, solver, and objective details. Do not replace formulas with vague prose.
+
+Text:
+{content}
+
+Output format (use exact headers):
+## PROBLEM FORMULATION
+[Precise inputs, outputs, governing problem, and assumptions]
+
+## GOVERNING EQUATIONS / OBJECTIVES
+[Every important equation in LaTeX or the source notation]
+
+## VARIABLES AND PARAMETERS
+[Define all symbols, units, domains, and parameter values]
+
+## NUMERICAL DISCRETIZATION
+[Grid/mesh, time stepping, boundary and initial conditions, solver, tolerances, and stability choices]
+
+## ALGORITHM / UPDATE RULE
+[Step-by-step numerical or optimization procedure]
+
+## ASSUMPTIONS AND LIMITATIONS
+[All stated modeling assumptions and their implications]""",
+
+    "implementation": """Extract all implementation and reproducibility details from the text below.
+Keep exact values and software/hardware names. Do not summarize away settings that another researcher would need to repeat the work.
+
+Text:
+{content}
+
+Output format (use exact headers):
+## MODEL / SYSTEM CONFIGURATION
+[Architecture, components, parameter counts, representations, and input/output shapes]
+
+## TRAINING / SOLVER SETTINGS
+[Optimizer, learning rate, schedule, batch size, epochs, seeds, stopping rules, tolerances, and solver settings]
+
+## COMPUTATIONAL ENVIRONMENT
+[Hardware, software, libraries, parallelism, runtime, memory, and cost]
+
+## END-TO-END WORKFLOW
+[Preprocessing, training, inference, postprocessing, and evaluation steps]
+
+## REPRODUCTION CHECKLIST
+[Concrete values or procedures needed to reproduce the experiment]""",
+
+    "appendix": """Extract the appendix and supplementary technical material below.
+Preserve derivations, proofs, extra experiments, diagnostics, tables, equations, implementation notes, and exact values. Clearly distinguish supplementary evidence from the main paper. Do not invent content.
+
+Text:
+{content}
+
+Output format (use exact headers):
+## DERIVATIONS / PROOFS
+[All relevant derivations or proof details]
+
+## SUPPLEMENTARY EXPERIMENTS
+[Additional experiments, diagnostics, sensitivity analyses, and exact results]
+
+## EXTRA TABLES / FIGURES
+[Describe or reproduce supplementary tables and figures with exact values]
+
+## ADDITIONAL REPRODUCIBILITY NOTES
+[Any implementation, data, or evaluation details only present in the appendix]""",
+
     "results": """Organize the following experimental results into a structured format.
 CRITICAL: Keep ALL numbers, ALL percentages, ALL table data EXACTLY as they appear. Do NOT round or omit any values.
 IMPORTANT: Use HTML table format (<table>) for ALL tables, NOT markdown format (| xxx |).
@@ -161,4 +249,3 @@ Output format (use exact headers):
 ## BROADER IMPACT
 [If mentioned, any discussion of impact, applications, or societal implications]""",
 }
-

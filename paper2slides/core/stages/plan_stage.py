@@ -16,7 +16,7 @@ async def run_plan_stage(base_dir: Path, config_dir: Path, config: Dict) -> Dict
     from paper2slides.summary import PaperContent, GeneralContent, TableInfo, FigureInfo, OriginalElements
     from paper2slides.generator import (
         GenerationConfig, GenerationInput, ContentPlanner,
-        OutputType, PosterDensity, SlidesLength, StyleType,
+        OutputType, PosterDensity, SlidesLength, SlideProfile, StyleType,
     )
     
     summary_data = load_json(get_summary_checkpoint(base_dir, config))
@@ -49,6 +49,10 @@ async def run_plan_stage(base_dir: Path, config_dir: Path, config: Dict) -> Dict
         output_type=OutputType(config.get("output_type", "slides")),
         poster_density=PosterDensity(config.get("poster_density", "medium")),
         slides_length=SlidesLength(config.get("slides_length", "medium")),
+        profile=SlideProfile(config.get("profile", "standard")),
+        min_slides=config.get("min_slides"),
+        max_slides=config.get("max_slides"),
+        include_appendix=config.get("include_appendix", False),
         style=StyleType(config.get("style", "academic")),
         custom_style=config.get("custom_style"),
     )

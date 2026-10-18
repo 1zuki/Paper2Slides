@@ -6,6 +6,15 @@ from datetime import datetime
 from typing import Dict
 
 
+def _checkpoint_suffix(config: Dict) -> str:
+    """Return a suffix for checkpoints whose extraction scope differs."""
+    profile = config.get("profile", "standard")
+    suffix = "" if profile == "standard" else f"_{profile}"
+    if config.get("include_appendix", False):
+        suffix += "_appendix"
+    return suffix
+
+
 def get_base_dir(output_dir: str, project_name: str, content_type: str) -> Path:
     """Get base directory for project."""
     return Path(output_dir) / project_name / content_type
@@ -27,6 +36,15 @@ def get_config_name(config: Dict) -> str:
         param = config.get("poster_density", "medium")
     else:
         param = config.get("slides_length", "medium")
+        profile = config.get("profile", "standard")
+        min_slides = config.get("min_slides")
+        max_slides = config.get("max_slides")
+        include_appendix = config.get("include_appendix", False)
+        if profile != "standard" or min_slides is not None or max_slides is not None or include_appendix:
+            range_suffix = f"_{min_slides or 'auto'}-{max_slides or 'auto'}"
+            param = f"{param}_{profile}{range_suffix}"
+            if include_appendix:
+                param += "_appendix"
     
     # Handle custom style. Use hash suffix
     if style == "custom":
@@ -47,19 +65,20 @@ def get_config_dir(base_dir: Path, config: Dict) -> Path:
 def get_rag_checkpoint(base_dir: Path, config: Dict) -> Path:
     """Get path to RAG checkpoint file."""
     mode_dir = get_mode_dir(base_dir, config)
-    return mode_dir / "checkpoint_rag.json"
+    return mode_dir / f"checkpoint_rag{_checkpoint_suffix(config)}.json"
 
 
 def get_summary_checkpoint(base_dir: Path, config: Dict) -> Path:
     """Get path to summary checkpoint file."""
     mode_dir = get_mode_dir(base_dir, config)
-    return mode_dir / "checkpoint_summary.json"
+    return mode_dir / f"checkpoint_summary{_checkpoint_suffix(config)}.json"
 
 
 def get_summary_md(base_dir: Path, config: Dict) -> Path:
     """Get path to summary markdown file."""
     mode_dir = get_mode_dir(base_dir, config)
-    return mode_dir / "summary.md"
+    suffix = _checkpoint_suffix(config)
+    return mode_dir / f"summary{suffix}.md"
 
 
 def get_plan_checkpoint(config_dir: Path) -> Path:

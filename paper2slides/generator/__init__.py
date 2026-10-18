@@ -7,8 +7,10 @@ from .config import (
     OutputType,
     PosterDensity,
     SlidesLength,
+    SlideProfile,
     StyleType,
     SLIDES_PAGE_RANGES,
+    SLIDE_PROFILE_PAGE_RANGES,
     GenerationConfig,
     GenerationInput,
 )
@@ -26,8 +28,10 @@ __all__ = [
     "OutputType",
     "PosterDensity",
     "SlidesLength",
+    "SlideProfile",
     "StyleType",
     "SLIDES_PAGE_RANGES",
+    "SLIDE_PROFILE_PAGE_RANGES",
     "GenerationConfig",
     "GenerationInput",
     # Content Planner

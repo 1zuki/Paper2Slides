@@ -93,6 +93,72 @@ Distribute content across {min_pages}-{max_pages} slides covering these areas:
 4. **TABLE DATA**: Extract tables with actual numerical values from the original.
 """
 
+# Research profile prompt.  This deliberately asks for an evidence map before
+# slide prose so the planner has to account for technical sections instead of
+# spending the whole budget on a results narrative.
+RESEARCH_PAPER_SLIDES_PLANNING_PROMPT = """You are planning a research-seminar presentation from a technical paper.
+Organize the paper into {min_pages}-{max_pages} slides. This is a detailed research deck, not a short abstract or a marketing summary.
+
+## Document Evidence
+{summary}
+{assets_section}
+
+## Required coverage and allocation
+Create a coherent story, but cover every applicable evidence category below:
+
+1. **Opening and research question**: title, authors/affiliations, problem context, research gap, and contributions.
+2. **Data / benchmark construction**: sources, generation or collection process, preprocessing, exact dataset sizes, splits, resolutions, and coverage. Use 2-4 slides when applicable.
+3. **Method and system design**: overview plus one slide per major component or pipeline stage. Do not collapse distinct modules into one paragraph.
+4. **Mathematical or numerical formulation**: inputs/outputs, governing equations, objective/loss, discretization, boundary/initial conditions, assumptions, algorithms, and variable definitions. Preserve representative equations in LaTeX. Use 2-5 slides when applicable.
+5. **Implementation and reproducibility**: architecture/configuration, training or solver settings, hardware/software, and computational cost.
+6. **Evaluation protocol**: datasets, splits, baselines, metrics, and validation design.
+7. **Results and analysis**: main results, category/split breakdowns, ablations, diagnostics, uncertainty, failure cases, and interpretation. Do not let results exceed roughly one third of the deck.
+8. **Limitations and conclusion**: limitations, scope, contributions, and future work.
+9. **Appendix/supplement**: {appendix_instruction}
+
+Use these target proportions as a planning constraint, adapting when a category is absent:
+- opening/background: 10-15%
+- data/benchmark: 10-20%
+- methods/formulation/implementation: 30-40%
+- evaluation/results: 25-35%
+- limitations/conclusion: 5-10%
+- appendix: optional 10-20%
+
+## Slide writing requirements
+- Each slide has one primary claim or technical topic.
+- Use 120-220 words for technical slides when the source supports it; do not pad with generic prose.
+- Preserve exact values, units, equations, parameter settings, and named baselines.
+- Give every equation a short variable-definition block.
+- Reference source figures/tables by their exact IDs when they support the slide.
+- If a requested category is not present in the evidence, do not invent it; omit it and record that omission in the slide content only if useful.
+- Do not make claims that are not supported by the evidence above.
+
+## Output JSON only
+Return one JSON object with a `slides` array. Each slide must contain:
+- `id`
+- `title`
+- `content`
+- `category`: one of `opening`, `background`, `data`, `method`, `formulation`, `implementation`, `evaluation`, `results`, `limitations`, `conclusion`, or `appendix`
+- `tables`: array of `{{"table_id": "...", "extract": "...", "focus": "..."}}`
+- `figures`: array of `{{"figure_id": "...", "focus": "..."}}`
+
+The first slide must be the opening/title slide. The final main slide must be conclusion/limitations. If appendix inclusion is enabled, append clearly labeled appendix slides after the conclusion.
+"""
+
+RESEARCH_GENERAL_SLIDES_PLANNING_PROMPT = """You are planning a detailed technical research presentation from the document below.
+Organize it into {min_pages}-{max_pages} slides and follow the document's own structure. Cover problem context, data or examples, method/system details, formulas or algorithms, implementation/reproducibility, evaluation, results, limitations, and conclusion whenever the source contains them.
+
+## Document Evidence
+{summary}
+{assets_section}
+
+Target roughly 30-40% of slides for method/formulation/implementation, 25-35% for evaluation/results, and the remainder for context, data, limitations, conclusion, and optional appendix. Do not let results dominate. Preserve exact numbers, formulas, definitions, parameters, and source figure/table IDs; do not invent absent sections. Use one primary topic per slide and 120-220 words when supported.
+
+Appendix instruction: {appendix_instruction}
+
+Return JSON only with a `slides` array. Each item must contain `id`, `title`, `content`, `category`, `tables`, and `figures`. The first slide is the title/opening. The final main slide is the conclusion/limitations. Append clearly labeled appendix slides when enabled.
+"""
+
 # Paper poster density guidelines
 PAPER_POSTER_DENSITY_GUIDELINES: Dict[str, str] = {
     "sparse": """Current density level is **sparse**. Content should be concise but still informative.

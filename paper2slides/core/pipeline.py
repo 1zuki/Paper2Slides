@@ -113,6 +113,12 @@ def list_outputs(output_dir: str):
                     dummy_config = {"fast_mode": (mode_name == "fast")}
                     has_rag = get_rag_checkpoint(content_dir, dummy_config).exists()
                     has_summary = get_summary_checkpoint(content_dir, dummy_config).exists()
+                    # Research profiles use scoped checkpoint names and should
+                    # still appear in the output inventory.
+                    if not has_rag:
+                        has_rag = any(mode_dir.glob("checkpoint_rag_*.json"))
+                    if not has_summary:
+                        has_summary = any(mode_dir.glob("checkpoint_summary_*.json"))
                     
                     # Find config directories under mode
                     configs = []

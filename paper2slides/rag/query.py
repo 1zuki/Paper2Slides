@@ -71,6 +71,28 @@ RAG_PAPER_QUERIES: Dict[str, List[str]] = {
     ]
 }
 
+# Research decks need a wider evidence pass than the original five-part
+# summary.  Keep this as a separate profile so the default workflow remains
+# compatible with existing checkpoints and its smaller request budget.
+RAG_RESEARCH_QUERIES: Dict[str, List[str]] = {
+    **RAG_PAPER_QUERIES,
+    "data_generation": [
+        "How is the dataset or benchmark generated? Describe the data sources, simulation or collection process, sampling strategy, preprocessing, and quality controls with exact values.",
+        "What are the training, validation, test, and held-out splits? Report counts, resolutions, time windows, source families, and any cross-validation or cross-reference design.",
+    ],
+    "formulation": [
+        "What is the precise mathematical or numerical formulation of the problem? Give the governing equations, discretization, boundary/initial conditions, assumptions, and define every important variable.",
+        "What numerical solver, loss, objective, approximation, or update rule is used? Explain the derivation or algorithm step by step and preserve exact formulas and parameter choices.",
+    ],
+    "implementation": [
+        "What implementation details are needed to reproduce the method? Report architecture, software, hardware, optimizer, learning rate, batch size, epochs, tolerances, resolution, and other exact settings.",
+        "What is the end-to-end computational workflow, including preprocessing, training, inference, postprocessing, and runtime or memory cost?",
+    ],
+    "appendix": [
+        "What technical details, proofs, derivations, supplementary experiments, extra diagnostics, or reproducibility notes appear in the appendix or supplementary material? Preserve exact equations, tables, and numbers.",
+    ],
+}
+
 SKIP_LLM_SECTIONS = {"paper_info", "figures", "tables", "equations"}
 
 RAG_QUERY_MODES: Dict[str, str] = {
@@ -78,11 +100,35 @@ RAG_QUERY_MODES: Dict[str, str] = {
     "figures": "mix",
     "tables": "mix",
     "equations": "mix",
+    "data_generation": "mix",
+    "formulation": "mix",
+    "implementation": "mix",
+    "appendix": "mix",
     "motivation": "mix",
     "solution": "mix",
     "results": "mix",
     "contributions": "mix",
 }
+
+
+def get_paper_queries(
+    profile: str = "standard",
+    include_appendix: bool = False,
+) -> Dict[str, List[str]]:
+    """Return the paper query set for a planning profile.
+
+    A fresh dictionary is returned so callers can safely tailor the query set
+    for one pipeline run without mutating the module-level defaults.
+    """
+    if profile == "research":
+        queries = {category: list(items) for category, items in RAG_RESEARCH_QUERIES.items()}
+        if not include_appendix:
+            queries.pop("appendix", None)
+        return queries
+    queries = {category: list(items) for category, items in RAG_PAPER_QUERIES.items()}
+    if include_appendix:
+        queries["appendix"] = list(RAG_RESEARCH_QUERIES["appendix"])
+    return queries
 
 
 GENERAL_OVERVIEW_QUERIES = {

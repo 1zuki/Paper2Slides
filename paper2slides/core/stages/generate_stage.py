@@ -15,7 +15,7 @@ async def run_generate_stage(base_dir: Path, config_dir: Path, config: Dict) -> 
     """Stage 4: Generate images."""
     from paper2slides.summary import PaperContent, GeneralContent, TableInfo, FigureInfo, OriginalElements
     from paper2slides.generator import GenerationConfig, GenerationInput
-    from paper2slides.generator.config import OutputType, PosterDensity, SlidesLength, StyleType
+    from paper2slides.generator.config import OutputType, PosterDensity, SlidesLength, SlideProfile, StyleType
     from paper2slides.generator.content_planner import ContentPlan, Section, TableRef, FigureRef
     from paper2slides.generator.image_generator import ImageGenerator, save_images_as_pdf
     
@@ -52,6 +52,7 @@ async def run_generate_stage(base_dir: Path, config_dir: Path, config: Dict) -> 
             title=s.get("title", ""),
             section_type=s.get("type", "content"),
             content=s.get("content", ""),
+            category=s.get("category", ""),
             tables=[TableRef(**t) for t in s.get("tables", [])],
             figures=[FigureRef(**f) for f in s.get("figures", [])],
         ))
@@ -73,6 +74,10 @@ async def run_generate_stage(base_dir: Path, config_dir: Path, config: Dict) -> 
         output_type=OutputType(config.get("output_type", "slides")),
         poster_density=PosterDensity(config.get("poster_density", "medium")),
         slides_length=SlidesLength(config.get("slides_length", "medium")),
+        profile=SlideProfile(config.get("profile", "standard")),
+        min_slides=config.get("min_slides"),
+        max_slides=config.get("max_slides"),
+        include_appendix=config.get("include_appendix", False),
         style=StyleType(config.get("style", "academic")),
         custom_style=config.get("custom_style"),
     )
@@ -109,4 +114,3 @@ async def run_generate_stage(base_dir: Path, config_dir: Path, config: Dict) -> 
     logger.info(f"Output: {output_subdir}")
     
     return {"output_dir": str(output_subdir), "num_images": len(images)}
-

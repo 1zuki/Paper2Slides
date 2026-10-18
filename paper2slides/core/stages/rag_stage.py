@@ -282,7 +282,7 @@ async def run_rag_stage(base_dir: Path, config: Dict) -> Dict:
         logger.info("Running in FAST mode (parse only, no indexing)")
         
         from paper2slides.raganything.batch_parser import BatchParser
-        from paper2slides.rag import RAG_PAPER_QUERIES
+        from paper2slides.rag import get_paper_queries
         
         # Parse documents to generate markdown
         batch_parser = BatchParser(
@@ -329,7 +329,10 @@ async def run_rag_stage(base_dir: Path, config: Dict) -> Dict:
                 client=client,
                 markdown_content="",  # Not used anymore, content is processed inside
                 markdown_paths=markdown_paths,
-                queries_by_category=RAG_PAPER_QUERIES,
+                queries_by_category=get_paper_queries(
+                    config.get("profile", "standard"),
+                    config.get("include_appendix", False),
+                ),
                 model=client.settings.model,
             )
         else:
@@ -340,7 +343,7 @@ async def run_rag_stage(base_dir: Path, config: Dict) -> Dict:
     
     # ========== NORMAL MODE: Full RAG pipeline ==========
     else:
-        from paper2slides.rag import RAGClient, RAG_PAPER_QUERIES, RAG_QUERY_MODES
+        from paper2slides.rag import RAGClient, RAG_QUERY_MODES, get_paper_queries
         from paper2slides.rag.query import get_general_overview, generate_general_queries
         from paper2slides.rag.config import RAGConfig
         
@@ -380,9 +383,18 @@ async def run_rag_stage(base_dir: Path, config: Dict) -> Dict:
             logger.info(f"Running RAG queries ({content_type})...")
             
             if content_type == "paper":
+                queries_by_category = get_paper_queries(
+                    config.get("profile", "standard"),
+                    config.get("include_appendix", False),
+                )
+                category_modes = dict(RAG_QUERY_MODES)
+                category_modes.setdefault("data_generation", "mix")
+                category_modes.setdefault("formulation", "mix")
+                category_modes.setdefault("implementation", "mix")
+                category_modes.setdefault("appendix", "mix")
                 rag_results = await rag.batch_query_by_category(
-                    queries_by_category=RAG_PAPER_QUERIES,
-                    modes_by_category=RAG_QUERY_MODES,
+                    queries_by_category=queries_by_category,
+                    modes_by_category=category_modes,
                 )
             else:
                 logger.info("  Getting document overview...")
