@@ -126,18 +126,39 @@ class ContentPlanner:
         self.model = model
         # max_tokens: default 16000, override via RAG_LLM_MAX_TOKENS env or constructor
         # Note: deepseek has 8192 limit, set RAG_LLM_MAX_TOKENS=8192 if using deepseek
-        self.max_tokens = max_tokens or int(os.getenv("RAG_LLM_MAX_TOKENS", "16000"))
+        configured_max_tokens = os.getenv(
+            "PLANNER_LLM_MAX_TOKENS",
+            os.getenv("RAG_LLM_MAX_TOKENS", "16000"),
+        )
+        self.max_tokens = max_tokens or int(configured_max_tokens or "16000")
         
         if llm_client is not None:
             self.client = llm_client
         elif api_key is None and base_url is None:
-            self.client = create_llm_client()
+            # Planning includes extracted paper figures.  Use the optional
+            # planner-specific provider so text-only RAG models are not sent
+            # image inputs.  RAG and summary keep their existing provider.
+            self.client = create_llm_client(scope="planner")
             self.model = self.client.settings.model
         else:
             kwargs = {"api_key": self.api_key}
             if self.base_url:
                 kwargs["base_url"] = self.base_url
             self.client = OpenAI(**kwargs)
+
+        self.provider_name = getattr(
+            getattr(self.client, "settings", None),
+            "provider",
+            "openai_compatible",
+        )
+        configured_attach = os.getenv("PLANNER_LLM_ATTACH_FIGURES", "").strip().lower()
+        if configured_attach:
+            self.attach_figures = configured_attach not in {"0", "false", "no", "off"}
+        else:
+            # The configured codex gateway currently accepts text messages but
+            # rejects image_url parts. Vision-capable OpenAI-compatible
+            # providers keep the old multimodal behavior by default.
+            self.attach_figures = self.provider_name != "codex_gateway"
     
     def plan(self, gen_input: GenerationInput) -> ContentPlan:
         """Create a content plan from generation input."""
@@ -188,8 +209,13 @@ class ContentPlanner:
         # Select prompt template based on content type
         template = PAPER_SLIDES_PLANNING_PROMPT if gen_input.is_paper() else GENERAL_SLIDES_PLANNING_PROMPT
         
+        planning_figures = figure_images if self.attach_figures else []
         # Build assets section based on available tables/figures
-        assets_section = self._build_assets_section(tables_md, bool(figure_images))
+        assets_section = self._build_assets_section(
+            tables_md,
+            figure_images,
+            attach_figures=self.attach_figures,
+        )
         
         prompt = template.format(
             min_pages=min_pages,
@@ -198,7 +224,7 @@ class ContentPlanner:
             assets_section=assets_section,
         )
         
-        result = self._call_multimodal_llm(prompt, figure_images)
+        result = self._call_multimodal_llm(prompt, planning_figures)
         return self._parse_sections(result, is_slides=True)
     
     def _plan_poster(
@@ -221,8 +247,13 @@ class ContentPlanner:
         
         density_guidelines = guidelines_map.get(density, guidelines_map["medium"])
         
+        planning_figures = figure_images if self.attach_figures else []
         # Build assets section based on available tables/figures
-        assets_section = self._build_assets_section(tables_md, bool(figure_images))
+        assets_section = self._build_assets_section(
+            tables_md,
+            figure_images,
+            attach_figures=self.attach_figures,
+        )
         
         prompt = template.format(
             density_guidelines=density_guidelines,
@@ -230,12 +261,18 @@ class ContentPlanner:
             assets_section=assets_section,
         )
         
-        result = self._call_multimodal_llm(prompt, figure_images)
+        result = self._call_multimodal_llm(prompt, planning_figures)
         return self._parse_sections(result, is_slides=False)
     
-    def _build_assets_section(self, tables_md: str, has_figures: bool) -> str:
+    def _build_assets_section(
+        self,
+        tables_md: str,
+        figure_images: List[Dict],
+        attach_figures: bool,
+    ) -> str:
         """Build the tables/figures section based on available assets."""
         has_tables = bool(tables_md)
+        has_figures = bool(figure_images)
         
         if not has_tables and not has_figures:
             return ""
@@ -252,8 +289,16 @@ class ContentPlanner:
         if has_tables:
             parts.append(f"\n{tables_md}")
         
-        if has_figures:
+        if has_figures and attach_figures:
             parts.append("\n[FIGURE_IMAGES]")
+        elif has_figures:
+            parts.append(
+                "\nFigure inventory (the source figures will be placed by the local compositor; "
+                "reference these IDs when they support a slide):"
+            )
+            for fig in figure_images:
+                caption = fig.get("caption") or "No caption available."
+                parts.append(f"- {fig.get('figure_id', 'Figure')}: {caption}")
         
         parts.append("")  # Trailing newline
         return "\n".join(parts)
@@ -300,7 +345,12 @@ class ContentPlanner:
             logger.info("Calling LLM with text only (no images)")
         
         try:
-            logger.info(f"Calling {self.model} with max_tokens={self.max_tokens}")
+            logger.info(
+                "Calling %s/%s with max_tokens=%s",
+                self.provider_name,
+                self.model,
+                self.max_tokens,
+            )
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": content}],
@@ -438,10 +488,9 @@ class ContentPlanner:
         images = []
         for fig in origin.figures:
             # Build full path
-            if origin.base_path:
+            img_path = Path(fig.image_path)
+            if not img_path.exists() and origin.base_path:
                 img_path = Path(origin.base_path) / fig.image_path
-            else:
-                img_path = Path(fig.image_path)
             
             if not img_path.exists():
                 continue

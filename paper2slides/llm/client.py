@@ -26,19 +26,45 @@ class LLMSettings:
     api_style: str
 
 
-def get_llm_settings() -> LLMSettings:
-    """Read provider settings from process environment and paper2slides/.env."""
+def get_llm_settings(scope: str = "rag") -> LLMSettings:
+    """Read provider settings for the requested pipeline scope.
+
+    ``rag`` preserves the original RAG/summary configuration.  ``planner``
+    may use a separate vision-capable provider so a text-only RAG model is not
+    sent the extracted paper figures.
+    """
     load_dotenv(PROJECT_ROOT / "paper2slides" / ".env", override=False)
-    provider = os.getenv("RAG_LLM_PROVIDER", "openai_compatible").strip().lower()
+    scope = scope.strip().lower()
+    if scope not in {"rag", "planner"}:
+        raise ValueError("LLM scope must be 'rag' or 'planner'.")
+
+    planner_provider = os.getenv("PLANNER_LLM_PROVIDER", "").strip().lower()
+    provider = (
+        planner_provider
+        if scope == "planner" and planner_provider
+        else os.getenv("RAG_LLM_PROVIDER", "openai_compatible").strip().lower()
+    )
 
     if provider == "codex_gateway":
-        api_key = os.getenv("CODEX_API_KEY", "")
-        configured_url = os.getenv("CODEX_BASE_URL", "").rstrip("/")
-        model = os.getenv("CODEX_MODEL", "")
+        api_key = (
+            os.getenv("PLANNER_LLM_API_KEY", "") or os.getenv("CODEX_API_KEY", "")
+            if scope == "planner"
+            else os.getenv("CODEX_API_KEY", "")
+        )
+        configured_url = (
+            os.getenv("PLANNER_LLM_BASE_URL", "") or os.getenv("CODEX_BASE_URL", "")
+            if scope == "planner"
+            else os.getenv("CODEX_BASE_URL", "")
+        ).rstrip("/")
+        model = (
+            os.getenv("PLANNER_LLM_MODEL", "") or os.getenv("CODEX_MODEL", "")
+            if scope == "planner"
+            else os.getenv("CODEX_MODEL", "")
+        )
         if not api_key or not configured_url or not model:
             raise ValueError(
-                "RAG_LLM_PROVIDER=codex_gateway requires CODEX_API_KEY, "
-                "CODEX_BASE_URL, and CODEX_MODEL."
+                f"{scope.upper()} LLM codex_gateway requires CODEX_API_KEY, "
+                "CODEX_BASE_URL, and CODEX_MODEL (or planner-specific overrides)."
             )
         base_url = configured_url if configured_url.endswith("/v1") else f"{configured_url}/v1"
         return LLMSettings(provider, api_key, base_url, model, "responses")
@@ -48,17 +74,32 @@ def get_llm_settings() -> LLMSettings:
             "Unsupported RAG_LLM_PROVIDER. Choose 'openai_compatible' or 'codex_gateway'."
         )
 
-    api_key = os.getenv("RAG_LLM_API_KEY", "")
+    api_key = (
+        os.getenv("PLANNER_LLM_API_KEY", "") or os.getenv("RAG_LLM_API_KEY", "")
+        if scope == "planner"
+        else os.getenv("RAG_LLM_API_KEY", "")
+    )
     if not api_key:
         raise ValueError("RAG_LLM_API_KEY is required for the openai_compatible provider.")
-    api_style = os.getenv("RAG_LLM_API_STYLE", "chat_completions").strip().lower()
+    api_style = os.getenv(
+        "PLANNER_LLM_API_STYLE" if scope == "planner" else "RAG_LLM_API_STYLE",
+        "chat_completions",
+    ).strip().lower()
     if api_style not in {"chat_completions", "responses"}:
         raise ValueError("RAG_LLM_API_STYLE must be 'chat_completions' or 'responses'.")
     return LLMSettings(
         provider=provider,
         api_key=api_key,
-        base_url=os.getenv("RAG_LLM_BASE_URL") or None,
-        model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
+        base_url=(
+            os.getenv("PLANNER_LLM_BASE_URL") or os.getenv("RAG_LLM_BASE_URL")
+            if scope == "planner"
+            else os.getenv("RAG_LLM_BASE_URL")
+        ) or None,
+        model=(
+            os.getenv("PLANNER_LLM_MODEL") or os.getenv("LLM_MODEL", "gpt-4o-mini")
+            if scope == "planner"
+            else os.getenv("LLM_MODEL", "gpt-4o-mini")
+        ),
         api_style=api_style,
     )
 
@@ -181,7 +222,12 @@ class LLMClient:
         request.pop("extra_body", None)
         request.pop("seed", None)
         request.pop("stream", None)
-        request.pop("timeout", None)
+        configured_timeout = request.pop("timeout", None)
+        timeout_seconds = float(
+            configured_timeout
+            or os.getenv("CODEX_TIMEOUT_SECONDS", "300")
+            or "300"
+        )
         payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -204,7 +250,12 @@ class LLMClient:
                 "Accept": "text/event-stream",
             },
             json=payload,
-            timeout=180.0,
+            timeout=httpx.Timeout(
+                connect=min(timeout_seconds, 30.0),
+                read=timeout_seconds,
+                write=timeout_seconds,
+                pool=timeout_seconds,
+            ),
         ) as response:
             if response.is_error:
                 # Deliberately avoid including request headers or body in errors.
@@ -244,5 +295,5 @@ class LLMClient:
         return self.complete_text(messages, **kwargs)
 
 
-def create_llm_client() -> LLMClient:
-    return LLMClient()
+def create_llm_client(scope: str = "rag") -> LLMClient:
+    return LLMClient(settings=get_llm_settings(scope=scope))

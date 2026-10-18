@@ -13,6 +13,27 @@ from paper2slides.llm.client import (
 
 
 class TestLLMClient(unittest.TestCase):
+    def test_planner_scope_uses_gateway_without_moving_rag_scope(self):
+        with patch.dict(os.environ, {
+            "RAG_LLM_PROVIDER": "openai_compatible",
+            "RAG_LLM_API_KEY": "ollama",
+            "RAG_LLM_BASE_URL": "http://127.0.0.1:11434/v1",
+            "LLM_MODEL": "gpt-oss:120b-cloud",
+            "PLANNER_LLM_PROVIDER": "codex_gateway",
+            "CODEX_API_KEY": "test-key",
+            "CODEX_BASE_URL": "https://gateway.example/backend-api/codex/",
+            "CODEX_MODEL": "gpt-6-luna",
+        }, clear=True):
+            from paper2slides.llm.client import get_llm_settings
+            rag = get_llm_settings("rag")
+            planner = get_llm_settings("planner")
+
+        self.assertEqual(rag.provider, "openai_compatible")
+        self.assertEqual(rag.model, "gpt-oss:120b-cloud")
+        self.assertEqual(planner.provider, "codex_gateway")
+        self.assertEqual(planner.model, "gpt-6-luna")
+        self.assertEqual(planner.base_url, "https://gateway.example/backend-api/codex/v1")
+
     def test_codex_gateway_settings_select_responses_transport(self):
         with patch.dict(os.environ, {
             "RAG_LLM_PROVIDER": "codex_gateway",
