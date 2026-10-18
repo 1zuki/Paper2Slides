@@ -58,7 +58,7 @@ class Section:
             "content": self.content,
             "category": self.category,
         }
-        
+
         # Tables with optional extract/focus
         result["tables"] = []
         for t in self.tables:
