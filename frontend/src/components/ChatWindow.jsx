@@ -25,6 +25,8 @@ const ChatWindow = () => {
   const [style, setStyle] = useState('doraemon') // 'academic', 'doraemon', or custom
   const [output, setOutput] = useState('slides') // 'slides' or 'poster'
   const [length, setLength] = useState('medium') // 'short', 'medium', 'long' (for slides)
+  const [profile, setProfile] = useState('standard') // 'standard' or 'research'
+  const [includeAppendix, setIncludeAppendix] = useState(false)
   const [density, setDensity] = useState('medium') // 'sparse', 'medium', 'dense' (for poster)
   const [fastMode, setFastMode] = useState(true) // Fast mode: parse only, no RAG indexing (only for paper content, default enabled)
   
@@ -260,7 +262,7 @@ const ChatWindow = () => {
       messages: [],
       files: [],
       generatedOutputs: [],
-      config: { content, style, output, length, density, fastMode },
+      config: { content, style, output, length, profile, includeAppendix, density, fastMode },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
@@ -271,7 +273,7 @@ const ChatWindow = () => {
     const newId = newConv.id
     setCurrentConversationId(newId)
     setConversations(prev => [newConv, ...prev])
-  }, [content, style, output, length, density, fastMode, findEmptyConversation])
+  }, [content, style, output, length, profile, includeAppendix, density, fastMode, findEmptyConversation])
 
   // Select conversation
   const handleSelectConversation = useCallback((convId) => {
@@ -288,6 +290,8 @@ const ChatWindow = () => {
       if (conv.config.style !== undefined) setStyle(conv.config.style)
       if (conv.config.output !== undefined) setOutput(conv.config.output)
       if (conv.config.length !== undefined) setLength(conv.config.length)
+      if (conv.config.profile !== undefined) setProfile(conv.config.profile)
+      if (conv.config.includeAppendix !== undefined) setIncludeAppendix(conv.config.includeAppendix)
       if (conv.config.density !== undefined) setDensity(conv.config.density)
       if (conv.config.fastMode !== undefined) setFastMode(conv.config.fastMode)
     }
@@ -376,7 +380,7 @@ const ChatWindow = () => {
           slides: resultData.slides || [],
           pptUrl: resultData.ppt_url || null,
           posterUrl: resultData.poster_url || null,
-          config: { content, style, output, length, density, fastMode },
+          config: { content, style, output, length, profile, includeAppendix, density, fastMode },
           timestamp: new Date().toISOString()
         }
         
@@ -472,7 +476,7 @@ const ChatWindow = () => {
           messages: [],
           files: [],
           generatedOutputs: [],
-          config: { content, style, output, length, density, fastMode },
+          config: { content, style, output, length, profile, includeAppendix, density, fastMode },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -501,7 +505,7 @@ const ChatWindow = () => {
       role: 'user',
       content: text,
       files: filesWithBlobUrls,
-      config: { content, style, output, length, density, fastMode },
+      config: { content, style, output, length, profile, includeAppendix, density, fastMode },
       timestamp: new Date().toISOString()
     }
 
@@ -530,7 +534,7 @@ const ChatWindow = () => {
 
     // Save current config to conversation
     updateConversation(convId, {
-      config: { content, style, output, length, density, fastMode }
+      config: { content, style, output, length, profile, includeAppendix, density, fastMode }
     })
 
     setIsLoading(true)
@@ -562,6 +566,8 @@ const ChatWindow = () => {
       formData.append('style', style)
       if (output === 'slides') {
         formData.append('length', length)
+        formData.append('profile', profile)
+        formData.append('include_appendix', includeAppendix ? 'true' : 'false')
       } else {
         formData.append('density', density)
       }
@@ -786,7 +792,7 @@ const ChatWindow = () => {
       id: generateId(),
       role: 'user',
       content: 'Regenerate with current settings',
-      config: { content, style, output, length, density, fastMode },
+      config: { content, style, output, length, profile, includeAppendix, density, fastMode },
       timestamp: new Date().toISOString()
     }
 
@@ -824,6 +830,8 @@ const ChatWindow = () => {
       formData.append('session_id', sessionId)  // Pass session_id to reuse files
       if (output === 'slides') {
         formData.append('length', length)
+        formData.append('profile', profile)
+        formData.append('include_appendix', includeAppendix ? 'true' : 'false')
       } else {
         formData.append('density', density)
       }
@@ -1123,6 +1131,10 @@ const ChatWindow = () => {
               setOutput={setOutput}
               length={length}
               setLength={setLength}
+              profile={profile}
+              setProfile={setProfile}
+              includeAppendix={includeAppendix}
+              setIncludeAppendix={setIncludeAppendix}
               density={density}
               setDensity={setDensity}
               fastMode={fastMode}

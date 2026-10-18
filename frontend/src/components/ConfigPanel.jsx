@@ -10,6 +10,10 @@ const ConfigPanel = ({
   setOutput, 
   length, 
   setLength, 
+  profile,
+  setProfile,
+  includeAppendix = false,
+  setIncludeAppendix = () => {},
   density, 
   setDensity,
   fastMode = false,
@@ -403,16 +407,45 @@ const ConfigPanel = ({
 
               {/* Conditional Options */}
               {output === 'slides' ? (
-                <SegmentedControl
-                  label="Length"
-                  options={[
-                    { label: 'Short (5-8)', value: 'short' },
-                    { label: 'Medium (8-12)', value: 'medium' },
-                    { label: 'Long (12-15)', value: 'long' }
-                  ]}
-                  value={length}
-                  onChange={setLength}
-                />
+                <>
+                  <SegmentedControl
+                    label="Planning Profile"
+                    options={[
+                      { label: 'Standard', value: 'standard' },
+                      { label: 'Research', value: 'research' }
+                    ]}
+                    value={profile}
+                    onChange={setProfile}
+                  />
+                  {profile === 'standard' ? (
+                    <SegmentedControl
+                      label="Length"
+                      options={[
+                        { label: 'Short (5-8)', value: 'short' },
+                        { label: 'Medium (8-12)', value: 'medium' },
+                        { label: 'Long (12-15)', value: 'long' }
+                      ]}
+                      value={length}
+                      onChange={setLength}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3">
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Appendix / supplement</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Add clearly labeled technical appendix slides when evidence is available.</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIncludeAppendix(!includeAppendix)}
+                        className={`relative h-6 w-11 rounded-full transition-colors ${includeAppendix ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                        aria-pressed={includeAppendix}
+                        aria-label="Include appendix slides"
+                      >
+                        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${includeAppendix ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
                 <SegmentedControl
                   label="Density"

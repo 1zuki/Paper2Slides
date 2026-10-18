@@ -150,6 +150,10 @@ async def chat(
     output_type: str = Form("slides"),  # 'slides' or 'poster'
     style: str = Form("doraemon"),  # 'academic', 'doraemon', or custom description
     length: Optional[str] = Form(None),  # 'short', 'medium', 'long' (for slides)
+    profile: Optional[str] = Form(None),  # 'standard' or 'research'
+    min_slides: Optional[int] = Form(None),
+    max_slides: Optional[int] = Form(None),
+    include_appendix: Optional[str] = Form(None),
     density: Optional[str] = Form(None),  # 'sparse', 'medium', 'dense' (for poster)
     fast_mode: Optional[str] = Form(None),  # 'true' or 'false' - fast mode for paper content
     session_id: Optional[str] = Form(None),  # Existing session ID to reuse files
@@ -164,6 +168,9 @@ async def chat(
         output_type: 'slides' or 'poster'
         style: 'academic', 'doraemon', or custom description
         length: 'short', 'medium', 'long' (for slides)
+        profile: 'standard' or 'research'
+        min_slides/max_slides: optional custom slide bounds
+        include_appendix: 'true' or 'false'
         density: 'sparse', 'medium', 'dense' (for poster)
         fast_mode: 'true' or 'false' - fast mode for paper content (no RAG indexing)
         session_id: Optional existing session ID to reuse files (for regeneration)
@@ -245,6 +252,8 @@ async def chat(
         print(f"Config: {output_type} | {style} | {content}")
         if length:
             print(f"  Length: {length}")
+        if profile:
+            print(f"  Profile: {profile}")
         if density:
             print(f"  Density: {density}")
         if content == 'paper' and fast_mode_bool:
@@ -278,6 +287,10 @@ async def chat(
             output_type,
             style,
             length,
+            profile,
+            min_slides,
+            max_slides,
+            include_appendix,
             density,
             fast_mode_bool,
             session_manager  # Pass session manager to check for cancellation
@@ -299,6 +312,10 @@ async def generate_slides_with_pipeline(
     output_type: str, 
     style: str,
     length: Optional[str] = None,
+    profile: Optional[str] = None,
+    min_slides: Optional[int] = None,
+    max_slides: Optional[int] = None,
+    include_appendix: Optional[str] = None,
     density: Optional[str] = None,
     fast_mode: bool = False,
     session_manager: SessionManager = None
@@ -367,6 +384,10 @@ async def generate_slides_with_pipeline(
         "style": style_type,
         "custom_style": custom_style,
         "slides_length": length or "medium",
+        "profile": profile or "standard",
+        "min_slides": min_slides,
+        "max_slides": max_slides,
+        "include_appendix": (include_appendix or "false").lower() == "true",
         "poster_density": density or "medium",
         "fast_mode": fast_mode if content == "paper" else False,  # Fast mode only for paper content
     }
@@ -438,6 +459,10 @@ def _update_state_on_error(
     output_type: str,
     style: str,
     length: Optional[str],
+    profile: Optional[str],
+    min_slides: Optional[int],
+    max_slides: Optional[int],
+    include_appendix: Optional[str],
     density: Optional[str],
     fast_mode: bool
 ):
@@ -467,6 +492,10 @@ def _update_state_on_error(
         "output_type": output_type,
         "style": style_type,
         "slides_length": length or "medium",
+        "profile": profile or "standard",
+        "min_slides": min_slides,
+        "max_slides": max_slides,
+        "include_appendix": (include_appendix or "false").lower() == "true",
         "poster_density": density or "medium",
         "fast_mode": fast_mode if content == "paper" else False,
     }
@@ -494,6 +523,10 @@ async def run_pipeline_background(
     output_type: str,
     style: str,
     length: Optional[str],
+    profile: Optional[str],
+    min_slides: Optional[int],
+    max_slides: Optional[int],
+    include_appendix: Optional[str],
     density: Optional[str],
     fast_mode: bool = False,
     session_manager: SessionManager = None
@@ -514,7 +547,9 @@ async def run_pipeline_background(
         
         logger.info(f"Starting background pipeline for session {session_id[:8]}")
         result = await generate_slides_with_pipeline(
-            session_id, message, files, content, output_type, style, length, density, fast_mode, session_manager
+            session_id, message, files, content, output_type, style, length,
+            profile, min_slides, max_slides, include_appendix, density,
+            fast_mode, session_manager
         )
         
         # Check if cancelled after completion
@@ -538,7 +573,10 @@ async def run_pipeline_background(
         
         # Also update the state.json file to reflect the failure
         try:
-            _update_state_on_error(session_id, str(e), files, content, output_type, style, length, density, fast_mode)
+            _update_state_on_error(
+                session_id, str(e), files, content, output_type, style, length,
+                profile, min_slides, max_slides, include_appendix, density, fast_mode,
+            )
         except Exception as state_err:
             logger.error(f"Failed to update state file: {state_err}")
     finally:
@@ -770,4 +808,3 @@ if __name__ == "__main__":
         limit_concurrency=10,    
         limit_max_requests=1000  
     )
-
