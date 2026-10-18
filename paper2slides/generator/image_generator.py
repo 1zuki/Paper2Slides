@@ -8,6 +8,7 @@ import json
 import base64
 import time
 import logging
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -33,6 +34,7 @@ from ..prompts.image_generation import (
     SLIDE_FIGURE_HINT,
     POSTER_FIGURE_HINT,
 )
+from .academic_compositor import render_academic_slide
 
 
 @dataclass
@@ -95,6 +97,15 @@ class ImageGenerator:
         self.google_api_base_url = (google_api_base_url or os.getenv("GOOGLE_GENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")).rstrip("/")
         self.response_mime_type = response_mime_type or os.getenv("IMAGE_GEN_RESPONSE_MIME_TYPE", "text/plain")
         self.model = model or os.getenv("IMAGE_GEN_MODEL")
+        self.comfyui_base_url = os.getenv("IMAGE_GEN_COMFYUI_BASE_URL", "http://127.0.0.1:8188").rstrip("/")
+        self.comfyui_workflow_path = os.getenv("IMAGE_GEN_COMFYUI_WORKFLOW", "")
+        self.comfyui_prompt_node = os.getenv("IMAGE_GEN_COMFYUI_PROMPT_NODE", "")
+        self.comfyui_prompt_input = os.getenv("IMAGE_GEN_COMFYUI_PROMPT_INPUT", "text")
+        self.comfyui_output_node = os.getenv("IMAGE_GEN_COMFYUI_OUTPUT_NODE", "")
+        self.comfyui_timeout_seconds = float(os.getenv("IMAGE_GEN_COMFYUI_TIMEOUT_SECONDS", "300"))
+        self.compose_academic = os.getenv("IMAGE_GEN_COMPOSE_ACADEMIC", "1").strip().lower() not in {
+            "0", "false", "no", "off"
+        }
         
         if not self.model:
             if self.provider == "google":
@@ -107,6 +118,20 @@ class ImageGenerator:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         elif self.provider == "google":
             self.client = None
+        elif self.provider == "comfyui":
+            self.client = None
+            if not self.comfyui_workflow_path:
+                raise ValueError(
+                    "IMAGE_GEN_PROVIDER=comfyui requires IMAGE_GEN_COMFYUI_WORKFLOW "
+                    "pointing to a ComfyUI API-format workflow JSON file."
+                )
+            workflow_path = Path(self.comfyui_workflow_path).expanduser()
+            if not workflow_path.is_file():
+                raise ValueError(f"ComfyUI workflow file does not exist: {workflow_path}")
+            if not self.comfyui_prompt_node:
+                raise ValueError("Set IMAGE_GEN_COMFYUI_PROMPT_NODE to the workflow node containing the positive prompt.")
+            if not self.comfyui_base_url.startswith(("http://", "https://")):
+                raise ValueError("IMAGE_GEN_COMFYUI_BASE_URL must be an http(s) URL.")
         else:
             raise ValueError(f"Unsupported image generation provider: {self.provider}")
     
@@ -148,8 +173,26 @@ class ImageGenerator:
             if save_callback and result:
                 save_callback(result[0], 0, 1)
             return result
+        if self.provider == "comfyui" and style_name == "academic" and self.compose_academic:
+            return self._generate_academic_slides(plan, figure_images, save_callback)
         else:
             return self._generate_slides(plan, style_name, processed_style, all_sections_md, figure_images, max_workers, save_callback)
+
+    def _generate_academic_slides(self, plan, figure_images, save_callback=None) -> List[GeneratedImage]:
+        """Compose readable academic slides from exact paper evidence.
+
+        Local diffusion checkpoints are kept available for custom or poster
+        styles, but they should not rasterize scientific labels and tables.
+        """
+        results = []
+        total = len(plan.sections)
+        for index, section in enumerate(plan.sections):
+            image_data = render_academic_slide(section, index, total, figure_images)
+            generated = GeneratedImage(section_id=section.id, image_data=image_data, mime_type="image/png")
+            results.append(generated)
+            if save_callback:
+                save_callback(generated, index, total)
+        return results
     
     def _generate_poster(self, style_name, processed_style: Optional[ProcessedStyle], sections_md, images) -> List[GeneratedImage]:
         """Generate 1 poster image."""
@@ -369,10 +412,9 @@ class ImageGenerator:
         }
         
         for fig_id, fig in plan.figures_index.items():
-            if base_path:
+            img_path = Path(fig.image_path)
+            if not img_path.exists() and base_path:
                 img_path = Path(base_path) / fig.image_path
-            else:
-                img_path = Path(fig.image_path)
             
             if not img_path.exists():
                 continue
@@ -405,7 +447,98 @@ class ImageGenerator:
         """Call image generation provider based on configuration."""
         if self.provider == "google":
             return self._call_model_google(prompt, reference_images)
+        if self.provider == "comfyui":
+            return self._call_model_comfyui(prompt)
         return self._call_model_openrouter(prompt, reference_images)
+
+    def _call_model_comfyui(self, prompt: str) -> tuple:
+        """Run a configured ComfyUI API workflow and return its first selected image."""
+        try:
+            workflow = json.loads(Path(self.comfyui_workflow_path).expanduser().read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Could not load ComfyUI workflow JSON: {exc}") from exc
+        if not isinstance(workflow, dict):
+            raise ValueError("ComfyUI workflow must be an API-format JSON object keyed by node ID.")
+
+        prompt_node = workflow.get(str(self.comfyui_prompt_node))
+        if not isinstance(prompt_node, dict) or not isinstance(prompt_node.get("inputs"), dict):
+            raise ValueError(
+                f"ComfyUI prompt node {self.comfyui_prompt_node!r} is missing or has no inputs. "
+                "Export the workflow in API format and check IMAGE_GEN_COMFYUI_PROMPT_NODE."
+            )
+        if self.comfyui_prompt_input not in prompt_node["inputs"]:
+            raise ValueError(
+                f"Prompt input {self.comfyui_prompt_input!r} is not present on ComfyUI node "
+                f"{self.comfyui_prompt_node!r}. Set IMAGE_GEN_COMFYUI_PROMPT_INPUT to the correct input name."
+            )
+        prompt_node["inputs"][self.comfyui_prompt_input] = prompt
+
+        client_id = secrets.token_hex(16)
+        try:
+            queued = requests.post(
+                f"{self.comfyui_base_url}/prompt",
+                json={"prompt": workflow, "client_id": client_id},
+                timeout=30,
+            )
+            queued.raise_for_status()
+            prompt_id = queued.json().get("prompt_id")
+            if not prompt_id:
+                raise RuntimeError("ComfyUI accepted the workflow without returning a prompt_id.")
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                f"Could not queue the local ComfyUI workflow at {self.comfyui_base_url}. "
+                "Confirm ComfyUI is running and IMAGE_GEN_COMFYUI_BASE_URL is correct."
+            ) from exc
+
+        deadline = time.monotonic() + self.comfyui_timeout_seconds
+        while time.monotonic() < deadline:
+            try:
+                history_response = requests.get(
+                    f"{self.comfyui_base_url}/history/{prompt_id}", timeout=30
+                )
+                history_response.raise_for_status()
+                history = history_response.json().get(prompt_id, {})
+            except requests.RequestException as exc:
+                raise RuntimeError("Could not read the ComfyUI generation result.") from exc
+
+            outputs = history.get("outputs", {})
+            if outputs:
+                output_nodes = [str(self.comfyui_output_node)] if self.comfyui_output_node else list(outputs)
+                image_info = None
+                for node_id in output_nodes:
+                    node_output = outputs.get(node_id, {})
+                    images = node_output.get("images", [])
+                    if images:
+                        image_info = images[0]
+                        break
+                if image_info is None:
+                    raise RuntimeError(
+                        "ComfyUI workflow completed but no image was found. Add a SaveImage output node "
+                        "and optionally set IMAGE_GEN_COMFYUI_OUTPUT_NODE to its node ID."
+                    )
+                try:
+                    image_response = requests.get(
+                        f"{self.comfyui_base_url}/view",
+                        params={
+                            "filename": image_info["filename"],
+                            "subfolder": image_info.get("subfolder", ""),
+                            "type": image_info.get("type", "output"),
+                        },
+                        timeout=60,
+                    )
+                    image_response.raise_for_status()
+                except (KeyError, requests.RequestException) as exc:
+                    raise RuntimeError("ComfyUI returned image metadata, but the image could not be downloaded.") from exc
+                mime_type = image_response.headers.get("Content-Type", "image/png").split(";", 1)[0]
+                if not mime_type.startswith("image/"):
+                    raise RuntimeError(f"ComfyUI returned a non-image content type: {mime_type}")
+                return image_response.content, mime_type
+            time.sleep(0.5)
+
+        raise TimeoutError(
+            f"ComfyUI did not finish this image within {self.comfyui_timeout_seconds:g} seconds. "
+            "Check the ComfyUI queue and increase IMAGE_GEN_COMFYUI_TIMEOUT_SECONDS if appropriate."
+        )
     
     def _call_model_openrouter(self, prompt: str, reference_images: List[dict]) -> tuple:
         """Call the image generation model with retry logic."""
@@ -489,19 +622,19 @@ class ImageGenerator:
         model_name = self.model if self.model.startswith("models/") else f"models/{self.model}"
         url = f"{self.google_api_base_url}/{model_name}:generateContent"
         
-        wants_image = self.response_mime_type.lower().startswith("image/")
         model_key = model_name.split("/", 1)[-1]
         image_capable_prefixes = (
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash-8b",
-            "gemini-2.0-flash",
+            "gemini-2.5-flash-image",
+            "gemini-3-pro-image",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-lite-image",
+            "gemini-nano-banana-2.1",
         )
-        if wants_image and not model_key.startswith(image_capable_prefixes):
+        if not model_key.startswith(image_capable_prefixes):
             raise ValueError(
-                f"Model '{model_name}' does not support image responses with the Google Gemini API. "
-                "Use an image-capable model such as 'models/gemini-1.5-flash' (or -8b/pro/2.0-flash) "
-                "or change IMAGE_GEN_RESPONSE_MIME_TYPE to a text type."
+                f"Model '{model_name}' is not a recognized Google image-generation model. "
+                "Use an image model such as 'models/gemini-2.5-flash-image' or "
+                "'models/gemini-3-pro-image'."
             )
         
         # Compose prompt parts with optional inline reference images
@@ -521,7 +654,9 @@ class ImageGenerator:
         
         payload = {
             "contents": [{"role": "user", "parts": parts}],
-            "generationConfig": {"responseMimeType": self.response_mime_type},
+            # Google image models negotiate image output through modalities.
+            # responseMimeType only accepts text-like formats on this endpoint.
+            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
         }
         
         for attempt in range(max_retries):
@@ -529,17 +664,27 @@ class ImageGenerator:
                 logger.info(f"Calling Google Gemini image API (attempt {attempt + 1}/{max_retries})...")
                 response = requests.post(
                     url,
-                    params={"key": self.api_key},
+                    headers={"x-goog-api-key": self.api_key},
                     json=payload,
                     timeout=60,
                 )
                 
                 if response.status_code >= 400:
-                    logger.warning(f"Google API error {response.status_code}: {response.text[:200]}")
-                    if attempt < max_retries - 1:
+                    if response.status_code == 429:
+                        raise RuntimeError(
+                            "Google API returned HTTP 429 (image quota/rate limit). "
+                            "Check the project's AI Studio rate limits/billing before retrying."
+                        )
+                    # Server errors may be transient; client errors will not improve on retry.
+                    retryable = response.status_code >= 500
+                    if retryable and attempt < max_retries - 1:
+                        logger.warning("Google API returned HTTP %s; retrying", response.status_code)
                         time.sleep(retry_delay * (attempt + 1))
                         continue
-                    response.raise_for_status()
+                    detail = response.text[:300]
+                    raise RuntimeError(
+                        f"Google API returned HTTP {response.status_code}: {detail}"
+                    )
                 
                 data = response.json()
                 candidates = data.get("candidates", [])
@@ -576,7 +721,12 @@ class ImageGenerator:
                 raise RuntimeError(error_msg)
             
             except Exception as e:
+                if isinstance(e, RuntimeError) and "HTTP 429 (image quota/rate limit)" in str(e):
+                    logger.error(str(e))
+                    raise
                 logger.error(f"Error in Google API call (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if isinstance(e, RuntimeError) and str(e).startswith("Google API returned HTTP "):
+                    raise
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay * (attempt + 1))
                     continue
