@@ -61,6 +61,8 @@ IMAGE_GEN_MODEL="google/gemini-3-pro-image-preview"
 
 For an external Responses gateway, set `RAG_LLM_PROVIDER="codex_gateway"`, `CODEX_API_KEY`, `CODEX_BASE_URL`, and `CODEX_MODEL` instead of the OpenAI-compatible text settings. Normal RAG indexing also requires a separate embedding endpoint; fast mode does not.
 
+For local image generation, run ComfyUI separately, export a workflow in API format, and set `IMAGE_GEN_PROVIDER="comfyui"` with `IMAGE_GEN_COMFYUI_BASE_URL`, `IMAGE_GEN_COMFYUI_WORKFLOW`, and `IMAGE_GEN_COMFYUI_PROMPT_NODE`. The workflow's checkpoint/model must already be installed in ComfyUI.
+
 ### 4. Run with Docker Compose
 
 **Important:** Run commands from the root directory of the Paper2Slides project (not from the docker folder):

@@ -149,6 +149,26 @@ CODEX_MODEL="your-text-model"
 
 The adapter appends `/v1` when needed and sends text and vision requests to the gateway's streaming `/v1/responses` route. Fast mode does not require embeddings. Normal RAG mode also needs an embedding endpoint, configured separately with `RAG_EMBEDDING_API_KEY` and `RAG_EMBEDDING_BASE_URL`. Image generation remains a separate provider selected with `IMAGE_GEN_PROVIDER`. Keep credentials in `paper2slides/.env` or process environment variables, never in source code.
 
+If the RAG model is text-only but slide planning should inspect extracted paper figures, keep RAG on Ollama and route only planning through a vision-capable gateway model:
+
+```dotenv
+RAG_LLM_PROVIDER="openai_compatible"
+RAG_LLM_BASE_URL="http://127.0.0.1:11434/v1"
+RAG_LLM_API_KEY="ollama"
+LLM_MODEL="gpt-oss:120b-cloud"
+
+PLANNER_LLM_PROVIDER="codex_gateway"
+PLANNER_LLM_API_KEY=""
+PLANNER_LLM_BASE_URL=""
+PLANNER_LLM_MODEL=""
+PLANNER_LLM_API_STYLE="responses"
+CODEX_API_KEY="your-key"
+CODEX_BASE_URL="https://your-gateway.example/backend-api/codex"
+CODEX_MODEL="gpt-6-luna"
+```
+
+`PLANNER_LLM_*` affects only the plan stage. RAG and summary continue using `RAG_LLM_*`; blank planner overrides fall back to `CODEX_*` variables. The configured gateway currently accepts text messages but rejects image parts, so leave `PLANNER_LLM_ATTACH_FIGURES="false"`; the planner receives figure IDs and captions, and the local compositor places the actual source figures.
+
 ### 2. Command Line Usage
 
 ```bash
@@ -305,8 +325,30 @@ outputs/
 
 - Set `IMAGE_GEN_PROVIDER` in `paper2slides/.env` to choose the backend:
   - `openrouter` (default): uses `IMAGE_GEN_API_KEY`, `IMAGE_GEN_BASE_URL`, and `IMAGE_GEN_MODEL` (default `google/gemini-3-pro-image-preview`)
-  - `google`: uses the official Gemini API at `GOOGLE_GENAI_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta`), `IMAGE_GEN_API_KEY`, `IMAGE_GEN_MODEL` (default `models/gemini-3-pro-image-preview`, must be image-capable), and `IMAGE_GEN_RESPONSE_MIME_TYPE` (default `text/plain`; use text types if your model does not support image responses)
+  - `google`: uses the Gemini `generateContent` API at `GOOGLE_GENAI_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta`), `IMAGE_GEN_API_KEY`, and an image-generation model such as `models/gemini-2.5-flash-image`. The request asks for `TEXT` and `IMAGE` modalities; `IMAGE_GEN_RESPONSE_MIME_TYPE` is not used to request image output.
+  - `comfyui`: calls a local ComfyUI server using an API-format workflow JSON. Configure `IMAGE_GEN_COMFYUI_BASE_URL`, `IMAGE_GEN_COMFYUI_WORKFLOW`, and `IMAGE_GEN_COMFYUI_PROMPT_NODE`; optionally set the prompt input name, output node ID, and timeout. The workflow must contain a text prompt node and a `SaveImage` output node. Install and load a compatible image checkpoint in ComfyUI separately.
 - Reference figures are sent as inline data when supported (Google) or as `image_url` attachments (OpenRouter).
+
+#### Local ComfyUI setup
+
+1. Install ComfyUI and a compatible checkpoint separately. For a 6 GB laptop GPU, begin with a low-memory SD 1.5 or SDXL Turbo workflow rather than a full-size SDXL workflow. Image generation still consumes GPU memory/time, although it avoids a hosted image API quota.
+2. Start ComfyUI with its normal local server, typically `http://127.0.0.1:8188`.
+3. In ComfyUI, export the workflow using **Save (API Format)**. The workflow must contain a text-prompt node (typically `CLIPTextEncode`) and an image output node (`SaveImage`).
+   4. Set these values in `paper2slides/.env`:
+
+```dotenv
+IMAGE_GEN_PROVIDER="comfyui"
+IMAGE_GEN_COMFYUI_BASE_URL="http://127.0.0.1:8188"
+IMAGE_GEN_COMFYUI_WORKFLOW="/absolute/path/to/workflow_api.json"
+IMAGE_GEN_COMFYUI_PROMPT_NODE="6"
+IMAGE_GEN_COMFYUI_PROMPT_INPUT="text"
+IMAGE_GEN_COMFYUI_OUTPUT_NODE="9"
+   IMAGE_GEN_COMFYUI_TIMEOUT_SECONDS="300"
+   ```
+
+   Use the node IDs from your exported workflow. No image API key is needed for this provider. For academic slides, Paper2Slides composes readable text and exact source figures locally by default; set `IMAGE_GEN_COMPOSE_ACADEMIC="false"` only if you explicitly want the raw diffusion workflow to paint the whole slide.
+
+The tested local setup used `/home/izu/Apps/ComfyUI`, ComfyUI low-VRAM mode, an NVIDIA RTX 4050 Laptop GPU with 6 GB VRAM, and the fp16 `Realistic_Vision_V5.1` SD 1.5 checkpoint. It completed 15 Paper2Slides image jobs and wrote a PDF, but the generated image text was not reliably readable. Use local diffusion for visual concepts/backgrounds; keep exact academic labels and tables as native/editable slide objects or source figures when producing the final presentation.
 
 ### Image Generation Notes
 
